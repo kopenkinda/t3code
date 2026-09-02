@@ -17,6 +17,8 @@ interface MediaVideoPlayerProps {
   readonly autoPlay?: boolean | undefined;
   readonly className?: string | undefined;
   readonly videoClassName?: string | undefined;
+  /** Styles the loading and failure panels, which otherwise assume an inline light surface. */
+  readonly stateClassName?: string | undefined;
   readonly style?: CSSProperties | undefined;
   readonly copyMarkdown?: string | undefined;
   readonly onExpand?: ((src: string) => void) | undefined;
@@ -35,6 +37,7 @@ export function MediaVideoPlayer({
   autoPlay = false,
   className,
   videoClassName,
+  stateClassName,
   style,
   copyMarkdown,
   onExpand,
@@ -142,7 +145,10 @@ export function MediaVideoPlayer({
       {failed ? (
         <span
           role="alert"
-          className="flex min-h-28 flex-col items-center justify-center gap-3 rounded-lg border border-border/40 bg-muted/40 p-4 text-center text-sm text-muted-foreground"
+          className={cn(
+            "flex min-h-28 flex-col items-center justify-center gap-3 rounded-lg border border-border/40 bg-muted/40 p-4 text-center text-sm text-muted-foreground",
+            stateClassName,
+          )}
         >
           <span className="inline-flex items-center gap-1.5">
             <TriangleAlertIcon aria-hidden className="size-3.5 shrink-0" />
@@ -189,7 +195,7 @@ export function MediaVideoPlayer({
         <span
           role="status"
           aria-label="Loading video"
-          className="block aspect-video w-full rounded-lg bg-muted/60"
+          className={cn("block aspect-video w-full rounded-lg bg-muted/60", stateClassName)}
           style={style}
         />
       )}

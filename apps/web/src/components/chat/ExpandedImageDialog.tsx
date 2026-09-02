@@ -15,12 +15,12 @@ interface ExpandedImageDialogProps {
   onClose: () => void;
 }
 
+const EXPANDED_MEDIA_STATE_CLASS_NAME =
+  "flex aspect-auto h-48 min-h-0 w-[min(92vw,32rem)] flex-col items-center justify-center gap-3 rounded-lg border border-border/70 bg-black p-6 text-center text-sm text-white shadow-2xl";
+
 function ExpandedMediaFailure({ children }: { children: ReactNode }) {
   return (
-    <div
-      role="alert"
-      className="flex h-48 w-[min(92vw,32rem)] flex-col items-center justify-center gap-3 rounded-lg border border-border/70 bg-black px-6 text-center text-sm text-white shadow-2xl"
-    >
+    <div role="alert" className={EXPANDED_MEDIA_STATE_CLASS_NAME}>
       {children}
     </div>
   );
@@ -35,23 +35,17 @@ function ExpandedVideo({ item }: { readonly item: ExpandedImageItem }) {
       ? assetUrl.url + (item.srcFragment ?? "")
       : null
     : item.src;
-  if (assetUrl._tag === "Failure") {
-    return (
-      <ExpandedMediaFailure>
-        <p>This video could not be loaded or played.</p>
-        <OpenMediaLink originalUrl={item.originalUrl} src={src} fileName={item.name} />
-      </ExpandedMediaFailure>
-    );
-  }
   return (
     <MediaVideoPlayer
       src={src}
       label={item.name}
+      sourceFailed={assetUrl._tag === "Failure"}
       originalUrl={item.originalUrl}
       preload="metadata"
       autoPlay={item.autoPlay ?? true}
-      className="block max-h-[86vh] max-w-[92vw]"
+      className="block max-h-[86vh] max-w-[92vw] text-center"
       videoClassName="aspect-auto max-h-[86vh] w-auto max-w-[92vw] rounded-lg border border-border/70 shadow-2xl"
+      stateClassName={EXPANDED_MEDIA_STATE_CLASS_NAME}
       onRetry={asset ? refreshAssetUrl : undefined}
     />
   );
