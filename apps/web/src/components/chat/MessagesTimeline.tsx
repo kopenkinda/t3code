@@ -1143,6 +1143,14 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
   const refreshAssetUrl = useAssetUrlRefresh(ctx.activeThreadEnvironmentId, resource);
   const src = file.previewUrl ?? (assetUrl._tag === "Success" ? assetUrl.url : null);
 
+  if (asset === null && src === null) {
+    return (
+      <div className="border-border/80 flex aspect-[4/3] w-full items-center justify-center rounded-lg border bg-black px-2 py-3 text-center text-[11px] text-white/70">
+        {file.name}
+      </div>
+    );
+  }
+
   return (
     <MediaVideoPlayer
       src={src}

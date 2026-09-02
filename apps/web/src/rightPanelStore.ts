@@ -39,7 +39,7 @@ export type RightPanelSurface =
   | { id: "diff"; kind: "diff" }
   | { id: "files"; kind: "files" }
   | {
-      id: `file:${string}`;
+      id: `file:${string}` | `attachment:${string}`;
       kind: "file";
       /** Workspace-relative, or absolute for a host file outside the workspace. */
       relativePath: string;
@@ -72,7 +72,8 @@ const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
 // v10 keys pull-request surfaces by reference instead of a singleton tab.
 // v11 stops persisting the pull-request list's shared panel, so a restart opens the page fresh.
-const RIGHT_PANEL_STORAGE_VERSION = 11;
+// v12 moves attachments outside the workspace-file id namespace.
+const RIGHT_PANEL_STORAGE_VERSION = 12;
 
 /**
  * The pull-request list's shared panel (see PULL_REQUESTS_PANEL_ID in the route) is session
@@ -162,7 +163,7 @@ const fileSurface = (
 });
 
 const attachmentSurface = (attachment: ChatFileAttachment): RightPanelSurface => ({
-  id: `file:attachment:${attachment.id}`,
+  id: `attachment:${attachment.id}`,
   kind: "file",
   relativePath: attachment.name,
   revealLine: null,
@@ -275,7 +276,16 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                         surface.revealRequestId >= 0
                           ? surface.revealRequestId
                           : 0;
-                      return [{ ...surface, revealLine, revealRequestId }];
+                      return [
+                        {
+                          ...surface,
+                          id: surface.attachment
+                            ? (`attachment:${surface.attachment.id}` as const)
+                            : surface.id,
+                          revealLine,
+                          revealRequestId,
+                        },
+                      ];
                     }
                     if (surface.kind === "pull-request") {
                       if (
@@ -331,11 +341,18 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                   })
                 : [];
               const rawActiveSurfaceId = validThreadState?.activeSurfaceId;
+              const migratedActiveSurfaceId =
+                surfaces.find(
+                  (surface) =>
+                    surface.kind === "file" &&
+                    surface.attachment !== undefined &&
+                    rawActiveSurfaceId === `file:attachment:${surface.attachment.id}`,
+                )?.id ?? rawActiveSurfaceId;
               const persistedActiveSurfaceId = surfaces.some(
-                (surface) => surface.id === rawActiveSurfaceId,
+                (surface) => surface.id === migratedActiveSurfaceId,
               )
-                ? (rawActiveSurfaceId ?? null)
-                : rawActiveSurfaceId === "pull-request"
+                ? (migratedActiveSurfaceId ?? null)
+                : migratedActiveSurfaceId === "pull-request"
                   ? (surfaces.find((surface) => surface.kind === "pull-request")?.id ?? null)
                   : null;
               // A migration that dropped every surface (e.g. plan-only panels
@@ -602,7 +619,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
             if (workspaceAvailable) return current;
             const surfaces = current.surfaces.filter(
-              (surface) => surface.kind !== "files" && surface.kind !== "file",
+              (surface) =>
+                surface.kind !== "files" &&
+                (surface.kind !== "file" || surface.attachment !== undefined),
             );
             if (surfaces.length === current.surfaces.length) return current;
             const activeStillExists = surfaces.some(

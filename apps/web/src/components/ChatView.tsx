@@ -7333,14 +7333,18 @@ function ChatViewContent(props: ChatViewProps) {
       />
     ) : (renderedRightPanelSurface?.kind === "files" ||
         renderedRightPanelSurface?.kind === "file") &&
-      activeProject &&
-      activeWorkspaceRoot ? (
+      ((activeProject && activeWorkspaceRoot) ||
+        (renderedRightPanelSurface.kind === "file" && renderedRightPanelSurface.attachment)) ? (
       <Suspense fallback={null}>
         <FilePreviewPanel
-          key={`${activeProject.environmentId}:${activeWorkspaceRoot}`}
-          environmentId={activeProject.environmentId}
-          cwd={activeWorkspaceRoot}
-          projectName={activeProject.title}
+          key={`${activeThread.environmentId}:${
+            renderedRightPanelSurface.kind === "file" && renderedRightPanelSurface.attachment
+              ? `attachment:${renderedRightPanelSurface.attachment.id}`
+              : activeWorkspaceRoot
+          }`}
+          environmentId={activeThread.environmentId}
+          cwd={activeWorkspaceRoot ?? ""}
+          projectName={activeProject?.title ?? ""}
           threadRef={activeThreadRef}
           composerDraftTarget={composerDraftTarget}
           keybindings={keybindings}
@@ -7350,8 +7354,7 @@ function ChatViewContent(props: ChatViewProps) {
               ? renderedRightPanelSurface.relativePath
               : null
           }
-          {...(renderedRightPanelSurface.kind === "file" &&
-          renderedRightPanelSurface.attachment
+          {...(renderedRightPanelSurface.kind === "file" && renderedRightPanelSurface.attachment
             ? { attachment: renderedRightPanelSurface.attachment }
             : {})}
           revealLine={

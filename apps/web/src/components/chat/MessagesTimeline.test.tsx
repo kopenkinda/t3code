@@ -490,6 +490,33 @@ describe("MessagesTimeline", () => {
     expect(markup).toContain('aria-label="Expand demo.mp4"');
     expect(markup).not.toContain('aria-label="Download demo.mp4"');
   });
+
+  it("shows the filename while an optimistic video is unavailable", () => {
+    const entry = {
+      ...buildUserTimelineEntry("Uploading the demo."),
+      message: {
+        ...buildUserTimelineEntry("Uploading the demo.").message,
+        attachments: [
+          {
+            type: "file" as const,
+            id: "optimistic-demo-mp4",
+            name: "pending-demo.mp4",
+            mimeType: "video/mp4",
+            sizeBytes: 42,
+            downloadable: false,
+          },
+        ],
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <MessagesTimeline {...buildProps()} timelineEntries={[entry]} />,
+    );
+
+    expect(markup).toContain("pending-demo.mp4");
+    expect(markup).not.toContain('aria-label="Loading video"');
+  });
+
   it("renders an ordinary file download button without creating its URL in advance", () => {
     const entry = {
       ...buildUserTimelineEntry("Read the report."),

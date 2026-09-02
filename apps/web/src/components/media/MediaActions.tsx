@@ -93,6 +93,10 @@ export function MediaActions({
     try {
       const noun = source.kind === "image" ? "image" : "video";
       const unavailable = source.src === null && source.asset === undefined;
+      const canCopyImage =
+        typeof navigator !== "undefined" &&
+        Boolean(navigator.clipboard?.write) &&
+        typeof ClipboardItem !== "undefined";
       const items: ContextMenuItem<MediaActionId>[] = [];
       if (reference?.kind === "file") {
         items.push({ id: "copy-full-path", label: "Copy full path" });
@@ -104,7 +108,11 @@ export function MediaActions({
       if (source.onOpenFile) items.push({ id: "open-file", label: "Open in file viewer" });
       items.push({ id: "save", label: `Save ${noun}`, disabled: unavailable });
       if (source.kind === "image") {
-        items.push({ id: "copy-image", label: "Copy image", disabled: unavailable });
+        items.push({
+          id: "copy-image",
+          label: "Copy image",
+          disabled: unavailable || !canCopyImage,
+        });
       }
 
       const action = await api.contextMenu.show(items, position);
