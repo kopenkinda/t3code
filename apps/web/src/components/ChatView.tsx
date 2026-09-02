@@ -132,6 +132,7 @@ import {
   DEFAULT_THREAD_TERMINAL_ID,
   MAX_TERMINALS_PER_GROUP,
   type ChatMessage,
+  isBrowserPreviewAttachment,
   isImageAttachment,
   videoMimeType,
   type SessionPhase,
@@ -2600,6 +2601,10 @@ function ChatViewContent(props: ChatViewProps) {
   const serverMessages = activeThread?.messages;
   const openFileAttachment = useCallback(
     async (attachment: ChatFileAttachment) => {
+      if (isBrowserPreviewAttachment(attachment) && activeThreadRef) {
+        useRightPanelStore.getState().openAttachment(activeThreadRef, attachment);
+        return;
+      }
       const connection = readPreparedConnection(environmentId);
       if (!connection) {
         toastManager.add({ type: "error", title: "The environment is not connected." });
@@ -2629,7 +2634,7 @@ function ChatViewContent(props: ChatViewProps) {
         });
       }
     },
-    [createAttachmentAssetUrl, environmentId],
+    [activeThreadRef, createAttachmentAssetUrl, environmentId],
   );
   const serverAttachmentIds = useMemo(() => {
     const attachmentIds = new Set<string>();
@@ -7339,6 +7344,10 @@ function ChatViewContent(props: ChatViewProps) {
               ? renderedRightPanelSurface.relativePath
               : null
           }
+          {...(renderedRightPanelSurface.kind === "file" &&
+          renderedRightPanelSurface.attachment
+            ? { attachment: renderedRightPanelSurface.attachment }
+            : {})}
           revealLine={
             renderedRightPanelSurface.kind === "file"
               ? (renderedRightPanelSurface.revealLine ?? null)
