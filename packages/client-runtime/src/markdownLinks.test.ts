@@ -125,6 +125,7 @@ describe("parseMarkdownFileLink", () => {
   it("accepts conventional extensionless names with or without a position", () => {
     expect(parseMarkdownFileLink("Makefile")).toEqual({ path: "Makefile" });
     expect(parseMarkdownFileLink("Dockerfile:8")).toEqual({ path: "Dockerfile", line: 8 });
+    expect(parseMarkdownFileLink("/srv/app/Makefile")).toEqual({ path: "/srv/app/Makefile" });
   });
 
   it("reads positions from suffixes and line anchors", () => {

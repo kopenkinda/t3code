@@ -35,16 +35,23 @@ function ExpandedVideo({ item }: { readonly item: ExpandedImageItem }) {
       ? assetUrl.url + (item.srcFragment ?? "")
       : null
     : item.src;
+  if (assetUrl._tag === "Failure") {
+    return (
+      <ExpandedMediaFailure>
+        <p>This video could not be loaded or played.</p>
+        <OpenMediaLink originalUrl={item.originalUrl} src={src} fileName={item.name} />
+      </ExpandedMediaFailure>
+    );
+  }
   return (
     <MediaVideoPlayer
       src={src}
       label={item.name}
-      sourceFailed={assetUrl._tag === "Failure"}
       originalUrl={item.originalUrl}
       preload="metadata"
       autoPlay={item.autoPlay ?? true}
       className="block max-h-[86vh] max-w-[92vw]"
-      videoClassName="max-h-[86vh] max-w-[92vw] rounded-lg border border-border/70 shadow-2xl"
+      videoClassName="aspect-auto max-h-[86vh] w-auto max-w-[92vw] rounded-lg border border-border/70 shadow-2xl"
       onRetry={asset ? refreshAssetUrl : undefined}
     />
   );
@@ -150,7 +157,7 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
             <XIcon />
           </Button>
           {item.type === "video" ? (
-            <ExpandedVideo item={item} />
+            <ExpandedVideo key={index} item={item} />
           ) : item.src === null || failedImageSrc === item.src ? (
             <ExpandedMediaFailure>
               <p>

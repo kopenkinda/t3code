@@ -101,8 +101,9 @@ AVPlayer activates audio as playback starts. The presenter pauses and releases
 its own player on close, then restores the previous audio-session configuration
 if no other component changed it during playback. It does not deactivate the
 shared session, which may still serve another player or recorder. Android plays every
-video, attachments included, in its React Native modal with the Expo Video player,
-streaming from the signed URL and downloading only for save or share.
+video, attachments included, in its React Native modal with the Expo Video player.
+Composer drafts play and share from their local file; other videos stream from the
+signed URL and download only for save or share.
 
 `shareFileFromSource` uses the same source registration to anchor UIKit's activity
 controller. Its promise completes when the native share flow finishes, keeping

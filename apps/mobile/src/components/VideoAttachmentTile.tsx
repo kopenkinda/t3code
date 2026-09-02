@@ -20,7 +20,7 @@ export function VideoAttachmentTile(props: {
   readonly className?: string;
   readonly style?: StyleProp<ViewStyle>;
 }) {
-  const mediaActions = useMediaActions(props.actionsSource);
+  const mediaActions = useMediaActions(props.disabled ? undefined : props.actionsSource);
   const hasActions = mediaActions.actions.length > 0;
   return (
     <PresentationSource

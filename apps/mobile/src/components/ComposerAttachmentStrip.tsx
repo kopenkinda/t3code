@@ -179,9 +179,10 @@ function ComposerVideoAttachment(props: {
     () => ({
       name: attachment.name,
       mimeType: videoMimeType(attachment) ?? attachment.mimeType,
+      sourceIdentifier,
       attachment,
     }),
-    [attachment],
+    [attachment, sourceIdentifier],
   );
 
   return (

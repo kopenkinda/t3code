@@ -410,12 +410,16 @@ function MessageAttachmentFile(props: {
   };
 
   if (videoType !== null) {
+    const sourceIdentifier = `attachment:${props.environmentId}:${attachment.id}`;
     return (
       <VideoAttachmentTile
         name={attachment.name}
-        sourceIdentifier={`attachment:${props.environmentId}:${attachment.id}`}
+        sourceIdentifier={sourceIdentifier}
         thumbnailSource={thumbnailUrl}
-        actionsSource={attachmentVideoPreviewSource(props.environmentId, attachment).actionsSource}
+        actionsSource={
+          attachmentVideoPreviewSource(props.environmentId, attachment, sourceIdentifier)
+            .actionsSource
+        }
         disabled={opening || httpBaseUrl === null}
         onPress={(sourceIdentifier) => props.onPressVideo(attachment, sourceIdentifier)}
         className="my-1 rounded-2xl"

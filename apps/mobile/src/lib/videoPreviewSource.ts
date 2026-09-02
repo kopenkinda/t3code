@@ -72,6 +72,12 @@ export function attachmentVideoPreviewSource(
     ...(sourceIdentifier ? { sourceIdentifier } : {}),
     environmentId,
     resource,
-    actionsSource: { name: attachment.name, mimeType, environmentId, resource },
+    actionsSource: {
+      name: attachment.name,
+      mimeType,
+      ...(sourceIdentifier ? { sourceIdentifier } : {}),
+      environmentId,
+      resource,
+    },
   };
 }

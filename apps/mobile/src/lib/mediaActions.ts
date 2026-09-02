@@ -17,6 +17,8 @@ export type MediaActionsSource = {
   readonly reference?: MediaReference;
   readonly name: string;
   readonly mimeType: string;
+  /** Anchors the iOS share sheet to the view that opened the menu. */
+  readonly sourceIdentifier?: string;
 } & (
   | { readonly uri: string }
   | { readonly attachment: DraftComposerFileAttachment }
@@ -47,7 +49,7 @@ export function useMediaActions(source: MediaActionsSource | undefined, onOpenFi
         const preview = await loadLocalAttachmentPreview(source.attachment, request.signal);
         if (!preview) return;
         try {
-          await preview.share(request.signal);
+          await preview.share(request.signal, source.sourceIdentifier);
         } finally {
           preview.dispose();
         }
@@ -59,6 +61,7 @@ export function useMediaActions(source: MediaActionsSource | undefined, onOpenFi
       const input = {
         attachment: { name: source.name, mimeType: source.mimeType },
         signal: request.signal,
+        sourceIdentifier: source.sourceIdentifier,
       };
       if (/^(file|content):/i.test(uri)) await shareLocalAttachment({ ...input, uri });
       else await downloadAndShareAttachment({ ...input, url: uri });
