@@ -1151,8 +1151,8 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
       }
       label={file.name}
       preload="visible"
-      className="block w-full"
-      videoClassName="border-border/80 max-h-[220px] rounded-lg border"
+      className="block h-full w-full"
+      videoClassName="border-border/80 aspect-auto h-full max-h-[220px] rounded-lg border"
       stateClassName="border-border/80 min-h-[72px] rounded-lg border bg-black text-white"
       onRetry={asset ? refreshAssetUrl : undefined}
       onExpand={asset ? () => ctx.onFileOpen(file) : undefined}
@@ -1204,7 +1204,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
     <div className="group flex flex-col items-end gap-1">
       <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
         {(regularImages.length > 0 || userVideos.length > 0) && (
-          <div className="mb-2 grid max-w-[420px] grid-cols-2 items-start gap-2">
+          <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
             {regularImages.map((image) => (
               <div
                 key={image.id}
@@ -1213,7 +1213,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                 {image.previewUrl ? (
                   <button
                     type="button"
-                    className="h-full w-full cursor-zoom-in"
+                    className="block h-full w-full cursor-zoom-in"
                     aria-label={`Preview ${image.name}`}
                     onClick={() => {
                       const preview = buildExpandedImagePreview(regularImages, image.id);
@@ -1224,7 +1224,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     <img
                       src={image.previewUrl}
                       alt={image.name}
-                      className="block h-auto max-h-[220px] w-full object-cover"
+                      className="block h-full max-h-[220px] w-full object-cover"
                     />
                   </button>
                 ) : (
