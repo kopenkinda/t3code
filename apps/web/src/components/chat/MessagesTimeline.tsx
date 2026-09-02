@@ -1141,7 +1141,7 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
   const resource = asset?.resource ?? null;
   const assetUrl = useAssetUrlState(ctx.activeThreadEnvironmentId, resource);
   const refreshAssetUrl = useAssetUrlRefresh(ctx.activeThreadEnvironmentId, resource);
-  const src = file.previewUrl ?? (assetUrl._tag === "Success" ? assetUrl.url : null);
+  const src = assetUrl._tag === "Success" ? assetUrl.url : (file.previewUrl ?? null);
 
   if (asset === null && src === null) {
     return (
