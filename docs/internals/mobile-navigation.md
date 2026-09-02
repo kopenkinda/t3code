@@ -86,9 +86,11 @@ composer thumbnails, and workspace image previews. The workspace PDF web preview
 Open PDF action for the native viewer. Android retains its image viewer and uses the
 system chooser for PDFs. Saving images on iOS uses the add-only photo-library permission.
 
-Every video on iOS opens in AVKit directly from its signed asset URL: sent attachments,
-markdown and workspace videos, and composer drafts. AVKit handles buffering; the client
-does not download the entire file or show a separate opening overlay before presentation.
+Every full-screen video preview on iOS is AVKit, playing directly from the signed asset
+URL: sent attachments, composer drafts, and file links that point at a video. Inline
+markdown embeds and the workspace file screen play in place with the Expo Video player.
+AVKit handles buffering; the client does not download the entire file or show a separate
+opening overlay before presentation.
 The URL is captured once per preview so credential refresh does not restart playback.
 Media actions (copy path, open in file viewer, save or share) belong to the surface that
 opened the video, a long-press on the thumbnail, so the player carries no
