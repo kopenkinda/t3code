@@ -1151,9 +1151,9 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
       }
       label={file.name}
       preload="visible"
-      className="block h-full w-full"
-      videoClassName="border-border/80 aspect-auto h-full max-h-[220px] rounded-lg border"
-      stateClassName="border-border/80 min-h-[72px] rounded-lg border bg-black text-white"
+      className="block aspect-[4/3] w-full"
+      videoClassName="border-border/80 aspect-auto size-full rounded-lg border"
+      stateClassName="border-border/80 aspect-auto h-full min-h-[72px] rounded-lg border bg-black text-white"
       onRetry={asset ? refreshAssetUrl : undefined}
       onExpand={asset ? () => ctx.onFileOpen(file) : undefined}
       actionsSource={
@@ -1208,7 +1208,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             {regularImages.map((image) => (
               <div
                 key={image.id}
-                className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
+                className="aspect-[4/3] overflow-hidden rounded-lg border border-border/80 bg-background/70"
               >
                 {image.previewUrl ? (
                   <button
@@ -1224,7 +1224,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
                     <img
                       src={image.previewUrl}
                       alt={image.name}
-                      className="block h-full max-h-[220px] w-full object-cover"
+                      className="block size-full object-cover"
                     />
                   </button>
                 ) : (
