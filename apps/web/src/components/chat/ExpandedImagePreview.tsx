@@ -101,11 +101,11 @@ export async function resolveMarkdownMediaPreview(input: {
   };
 }
 
-export function buildAttachmentVideoPreview(
+export function buildAttachmentVideoAsset(
   environmentId: EnvironmentId,
   attachment: ChatFileAttachment,
-): ExpandedImagePreview {
-  const asset = {
+): NonNullable<MediaActionSource["asset"]> {
+  return {
     environmentId,
     resource: {
       _tag: "attachment" as const,
@@ -114,6 +114,13 @@ export function buildAttachmentVideoPreview(
       mimeType: videoMimeType(attachment) ?? attachment.mimeType,
     },
   };
+}
+
+export function buildAttachmentVideoPreview(
+  environmentId: EnvironmentId,
+  attachment: ChatFileAttachment,
+): ExpandedImagePreview {
+  const asset = buildAttachmentVideoAsset(environmentId, attachment);
   return {
     images: [
       {

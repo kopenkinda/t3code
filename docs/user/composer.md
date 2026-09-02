@@ -31,8 +31,8 @@ Use Share to save a copy or send it to another app. PDFs support page navigation
 PDF links in assistant responses open the same preview. On Android, images open in the image
 viewer and PDFs open the system chooser.
 
-On web and desktop, sent PDF and HTML attachments open in the file viewer. Other attached files
-download when selected.
+On web and desktop, select a sent PDF or HTML attachment to open it in the file viewer, or use the
+download button beside it to save a copy. Other attached files download when selected.
 
 Select a video attachment before or after sending to play it. Web and desktop use the browser's
 built-in controls. On mobile, videos open in a full-screen player with native playback controls.

@@ -2599,19 +2599,11 @@ function ChatViewContent(props: ChatViewProps) {
     });
   }, []);
   const serverMessages = activeThread?.messages;
-  const openFileAttachment = useCallback(
+  const downloadFileAttachment = useCallback(
     async (attachment: ChatFileAttachment) => {
-      if (isBrowserPreviewAttachment(attachment) && activeThreadRef) {
-        useRightPanelStore.getState().openAttachment(activeThreadRef, attachment);
-        return;
-      }
       const connection = readPreparedConnection(environmentId);
       if (!connection) {
         toastManager.add({ type: "error", title: "The environment is not connected." });
-        return;
-      }
-      if (videoMimeType(attachment) !== null) {
-        setExpandedImage(buildAttachmentVideoPreview(environmentId, attachment));
         return;
       }
 
@@ -2634,7 +2626,21 @@ function ChatViewContent(props: ChatViewProps) {
         });
       }
     },
-    [activeThreadRef, createAttachmentAssetUrl, environmentId],
+    [createAttachmentAssetUrl, environmentId],
+  );
+  const openFileAttachment = useCallback(
+    (attachment: ChatFileAttachment) => {
+      if (isBrowserPreviewAttachment(attachment) && activeThreadRef) {
+        useRightPanelStore.getState().openAttachment(activeThreadRef, attachment);
+        return;
+      }
+      if (videoMimeType(attachment) !== null) {
+        setExpandedImage(buildAttachmentVideoPreview(environmentId, attachment));
+        return;
+      }
+      void downloadFileAttachment(attachment);
+    },
+    [activeThreadRef, downloadFileAttachment, environmentId],
   );
   const serverAttachmentIds = useMemo(() => {
     const attachmentIds = new Set<string>();
@@ -7488,6 +7494,7 @@ function ChatViewContent(props: ChatViewProps) {
                 isRevertingCheckpoint={isRevertingCheckpoint}
                 onImageExpand={onExpandTimelineImage}
                 onFileOpen={openFileAttachment}
+                onFileDownload={downloadFileAttachment}
                 markdownCwd={gitCwd ?? undefined}
                 resolvedTheme={resolvedTheme}
                 timestampFormat={timestampFormat}

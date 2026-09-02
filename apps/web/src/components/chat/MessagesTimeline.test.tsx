@@ -433,7 +433,7 @@ describe("MessagesTimeline", () => {
     expect(resolveTimelineMinimapInteractiveWidth(40, true)).toBe("22rem");
   });
 
-  it("renders browser documents as file previews instead of downloads", () => {
+  it("gives browser documents separate preview and download controls", () => {
     const entry = {
       ...buildUserTimelineEntry("Read the report."),
       message: {
@@ -456,12 +456,13 @@ describe("MessagesTimeline", () => {
     );
 
     expect(markup).toContain('aria-label="Preview report.pdf"');
+    expect(markup).toContain('aria-label="Download report.pdf"');
     expect(markup).toContain('data-icon-token="default"');
     expect(markup).not.toContain('download="report.pdf"');
     expect(markup).not.toContain('alt="report.pdf"');
   });
 
-  it("renders video attachments as play buttons", () => {
+  it("renders video attachments with the shared video player", () => {
     const entry = {
       ...buildUserTimelineEntry("Watch the demo."),
       message: {
@@ -473,6 +474,7 @@ describe("MessagesTimeline", () => {
             name: "demo.mp4",
             mimeType: "video/mp4",
             sizeBytes: 42,
+            previewUrl: "https://environment.test/api/assets/demo.mp4",
           },
         ],
       },
@@ -482,9 +484,10 @@ describe("MessagesTimeline", () => {
       <MessagesTimeline {...buildProps()} timelineEntries={[entry]} />,
     );
 
-    expect(markup).toContain('aria-label="Play demo.mp4"');
-    expect(markup).toContain("min-h-[72px]");
-    expect(markup).toContain(">demo.mp4</span>");
+    expect(markup).toContain("<video");
+    expect(markup).toContain('aria-label="demo.mp4"');
+    expect(markup).toContain('controls=""');
+    expect(markup).toContain('aria-label="Expand demo.mp4"');
     expect(markup).not.toContain('aria-label="Download demo.mp4"');
   });
   it("renders an ordinary file download button without creating its URL in advance", () => {
