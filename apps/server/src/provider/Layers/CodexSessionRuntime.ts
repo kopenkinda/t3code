@@ -19,6 +19,7 @@ import {
 } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import { normalizeModelSlug } from "@t3tools/shared/model";
+import { collectComposerInlineTokens } from "@t3tools/shared/composerInlineTokens";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -152,6 +153,24 @@ type CodexServiceTier = NonNullable<EffectCodexSchema.V2ThreadStartParams["servi
 type CodexThreadItem =
   | EffectCodexSchema.V2ThreadReadResponse["thread"]["turns"][number]["items"][number]
   | EffectCodexSchema.V2ThreadRollbackResponse["thread"]["turns"][number]["items"][number];
+
+export interface ResolvedCodexSkill {
+  readonly name: string;
+  readonly path: string;
+}
+
+interface CodexTurnStartClient {
+  readonly request: (
+    method: "skills/list",
+    payload: EffectCodexSchema.V2SkillsListParams,
+  ) => Effect.Effect<EffectCodexSchema.V2SkillsListResponse, CodexErrors.CodexAppServerError>;
+  readonly raw: {
+    readonly request: (
+      method: "turn/start",
+      payload: CodexTurnStartParamsWithCollaborationMode,
+    ) => Effect.Effect<unknown, CodexErrors.CodexAppServerError>;
+  };
+}
 
 export interface CodexSessionRuntimeOptions {
   readonly threadId: ThreadId;
@@ -589,10 +608,11 @@ function buildCodexCollaborationMode(input: {
   };
 }
 
-export function buildTurnStartParams(input: {
+export interface BuildTurnStartParamsInput {
   readonly threadId: string;
   readonly runtimeMode: RuntimeMode;
   readonly prompt?: string;
+  readonly skills?: ReadonlyArray<ResolvedCodexSkill>;
   readonly attachments?: ReadonlyArray<{
     readonly type: "image";
     readonly url: string;
@@ -603,7 +623,11 @@ export function buildTurnStartParams(input: {
   readonly interactionMode?: ProviderInteractionMode;
   /** Defaults to true so callers that predate the agent-access gate are unchanged. */
   readonly browserToolsAvailable?: boolean;
-}): Effect.Effect<
+}
+
+export function buildTurnStartParams(
+  input: BuildTurnStartParamsInput,
+): Effect.Effect<
   CodexTurnStartParamsWithCollaborationMode,
   CodexErrors.CodexAppServerProtocolParseError
 > {
@@ -612,6 +636,13 @@ export function buildTurnStartParams(input: {
     turnInput.push({
       type: "text",
       text: input.prompt,
+    });
+  }
+  for (const skill of input.skills ?? []) {
+    turnInput.push({
+      type: "skill",
+      name: skill.name,
+      path: skill.path,
     });
   }
   for (const attachment of input.attachments ?? []) {
@@ -646,6 +677,78 @@ export function buildTurnStartParams(input: {
     ),
   );
 }
+
+function collectExplicitCodexSkillNames(prompt: string): ReadonlyArray<string> {
+  return collectComposerInlineTokens(`${prompt}\n`).flatMap((token) =>
+    token.type === "skill" ? [token.value] : [],
+  );
+}
+
+export function resolveCodexSkillInputs(
+  prompt: string,
+  skills: ReadonlyArray<EffectCodexSchema.V2SkillsListResponse__SkillMetadata>,
+): ReadonlyArray<ResolvedCodexSkill> {
+  const enabledSkillsByName = new Map<string, ResolvedCodexSkill>();
+  for (const skill of skills) {
+    const normalizedName = skill.name.trim().toLowerCase();
+    if (!skill.enabled || enabledSkillsByName.has(normalizedName)) {
+      continue;
+    }
+    enabledSkillsByName.set(normalizedName, {
+      name: skill.name,
+      path: skill.path,
+    });
+  }
+
+  const resolved: ResolvedCodexSkill[] = [];
+  const seenNames = new Set<string>();
+  for (const name of collectExplicitCodexSkillNames(prompt)) {
+    const normalizedName = name.toLowerCase();
+    const skill = enabledSkillsByName.get(normalizedName);
+    if (!skill || seenNames.has(normalizedName)) {
+      continue;
+    }
+    seenNames.add(normalizedName);
+    resolved.push(skill);
+  }
+  return resolved;
+}
+
+export const startCodexTurn = Effect.fn("CodexSessionRuntime.startCodexTurn")(function* (input: {
+  readonly client: CodexTurnStartClient;
+  readonly cwd: string;
+  readonly turn: BuildTurnStartParamsInput;
+}) {
+  let skills: ReadonlyArray<ResolvedCodexSkill> = [];
+  const prompt = input.turn.prompt;
+  if (prompt && collectExplicitCodexSkillNames(prompt).length > 0) {
+    const catalog = yield* input.client.request("skills/list", { cwds: [input.cwd] }).pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning("Unable to resolve explicit Codex skills before turn.", {
+          cause,
+          cwd: input.cwd,
+        }).pipe(Effect.as(undefined)),
+      ),
+    );
+    const cwdSkills = catalog?.data.find((entry) => entry.cwd === input.cwd)?.skills ?? [];
+    skills = resolveCodexSkillInputs(prompt, cwdSkills);
+  }
+
+  const params = yield* buildTurnStartParams({
+    ...input.turn,
+    ...(skills.length > 0 ? { skills } : {}),
+  });
+  const rawResponse = yield* input.client.raw.request("turn/start", params);
+  return yield* decodeV2TurnStartResponse(rawResponse).pipe(
+    Effect.mapError((error) =>
+      CodexErrors.CodexAppServerProtocolParseError.fromSchemaError(
+        "decode-response-payload",
+        error,
+        { method: "turn/start" },
+      ),
+    ),
+  );
+});
 
 function classifyCodexStderrLine(rawLine: string): { readonly message: string } | null {
   const line = rawLine.replaceAll(ANSI_ESCAPE_REGEX, "").trim();
@@ -2308,30 +2411,24 @@ export const makeCodexSessionRuntime = (
           const normalizedModel = normalizeCodexModelSlug(
             input.model ?? (yield* Ref.get(sessionRef)).model,
           );
-          const params = yield* buildTurnStartParams({
-            threadId: providerThreadId,
-            runtimeMode: options.runtimeMode,
-            ...(input.input ? { prompt: input.input } : {}),
-            ...(input.attachments ? { attachments: input.attachments } : {}),
-            ...(normalizedModel ? { model: normalizedModel } : {}),
-            ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
-            ...(input.effort ? { effort: input.effort } : {}),
-            ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
-            // Derived from the session's own MCP configuration rather than the
-            // setting, so the prompt describes the tools this turn actually
-            // has even if the setting changed after the session started.
-            browserToolsAvailable: hasConfiguredMcpServer(options.appServerArgs),
+          const response = yield* startCodexTurn({
+            client,
+            cwd: options.cwd,
+            turn: {
+              threadId: providerThreadId,
+              runtimeMode: options.runtimeMode,
+              ...(input.input ? { prompt: input.input } : {}),
+              ...(input.attachments ? { attachments: input.attachments } : {}),
+              ...(normalizedModel ? { model: normalizedModel } : {}),
+              ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
+              ...(input.effort ? { effort: input.effort } : {}),
+              ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
+              // Derived from the session's own MCP configuration rather than the
+              // setting, so the prompt describes the tools this turn actually
+              // has even if the setting changed after the session started.
+              browserToolsAvailable: hasConfiguredMcpServer(options.appServerArgs),
+            },
           });
-          const rawResponse = yield* client.raw.request("turn/start", params);
-          const response = yield* decodeV2TurnStartResponse(rawResponse).pipe(
-            Effect.mapError((error) =>
-              CodexErrors.CodexAppServerProtocolParseError.fromSchemaError(
-                "decode-response-payload",
-                error,
-                { method: "turn/start" },
-              ),
-            ),
-          );
           const turnId = TurnId.make(response.turn.id);
           yield* updateSession(sessionRef, (session) => ({
             status: "running",

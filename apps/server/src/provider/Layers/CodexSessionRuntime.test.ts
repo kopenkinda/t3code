@@ -2,6 +2,7 @@ import * as NodeAssert from "node:assert/strict";
 
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Logger from "effect/Logger";
 import * as Schema from "effect/Schema";
 import { describe } from "vite-plus/test";
 import { DEFAULT_MODEL, ThreadId } from "@t3tools/contracts";
@@ -22,6 +23,8 @@ import {
   isRecoverableThreadResumeError,
   makeMemoryConsolidationNotificationFilter,
   openCodexThread,
+  resolveCodexSkillInputs,
+  startCodexTurn,
   toMcpElicitationResponse,
 } from "./CodexSessionRuntime.ts";
 const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
@@ -247,6 +250,239 @@ describe("buildTurnStartParams", () => {
         },
       ],
     });
+  });
+});
+
+const codexSkill = (
+  name: string,
+  path: string,
+  enabled = true,
+): EffectCodexSchema.V2SkillsListResponse__SkillMetadata => ({
+  name,
+  path,
+  enabled,
+  description: `${name} description`,
+  scope: path.includes("/project/") ? "repo" : "user",
+});
+
+describe("resolveCodexSkillInputs", () => {
+  const wayfinderProject = codexSkill("wayfinder", "/project/.agents/skills/wayfinder/SKILL.md");
+
+  it("resolves multiple skills in textual order and deduplicates repeated tokens", () => {
+    NodeAssert.deepStrictEqual(
+      resolveCodexSkillInputs("Use $TWO then $one and $two again", [
+        codexSkill("one", "/project/.agents/skills/one/SKILL.md"),
+        codexSkill("two", "/project/.agents/skills/two/SKILL.md"),
+      ]),
+      [
+        { name: "two", path: "/project/.agents/skills/two/SKILL.md" },
+        { name: "one", path: "/project/.agents/skills/one/SKILL.md" },
+      ],
+    );
+  });
+
+  it("uses the first enabled catalog entry for duplicate names", () => {
+    NodeAssert.deepStrictEqual(
+      resolveCodexSkillInputs("$wayfinder 687", [
+        wayfinderProject,
+        codexSkill("wayfinder", "/Users/me/.agents/skills/wayfinder/SKILL.md"),
+      ]),
+      [{ name: "wayfinder", path: "/project/.agents/skills/wayfinder/SKILL.md" }],
+    );
+  });
+
+  it("ignores unknown and disabled skills", () => {
+    NodeAssert.deepStrictEqual(
+      resolveCodexSkillInputs("$not-installed and $disabled ", [
+        codexSkill("disabled", "/project/.agents/skills/disabled/SKILL.md", false),
+      ]),
+      [],
+    );
+  });
+
+  it("recognizes a skill token at the end of the prompt", () => {
+    NodeAssert.deepStrictEqual(
+      resolveCodexSkillInputs("Please use $wayfinder", [wayfinderProject]),
+      [{ name: "wayfinder", path: "/project/.agents/skills/wayfinder/SKILL.md" }],
+    );
+  });
+});
+
+describe("startCodexTurn", () => {
+  const turnResponse = {
+    turn: {
+      id: "turn-1",
+      items: [],
+      status: "inProgress",
+    },
+  } satisfies EffectCodexSchema.V2TurnStartResponse;
+  const skillCatalog = (
+    skills: ReadonlyArray<EffectCodexSchema.V2SkillsListResponse__SkillMetadata>,
+  ): EffectCodexSchema.V2SkillsListResponse => ({
+    data: [{ cwd: "/project", errors: [], skills }],
+  });
+  const makeClient = (
+    requests: Array<{ readonly method: string; readonly payload: unknown }>,
+    catalog: Effect.Effect<EffectCodexSchema.V2SkillsListResponse, CodexErrors.CodexAppServerError>,
+  ) => ({
+    request: (method: "skills/list", payload: EffectCodexSchema.V2SkillsListParams) => {
+      requests.push({ method, payload });
+      return catalog;
+    },
+    raw: {
+      request: (method: "turn/start", payload: unknown) => {
+        requests.push({ method, payload });
+        return Effect.succeed(turnResponse);
+      },
+    },
+  });
+
+  it.effect("sends an explicit skill as structured turn input", () =>
+    Effect.gen(function* () {
+      const requests: Array<{ readonly method: string; readonly payload: unknown }> = [];
+      const catalog = skillCatalog([
+        codexSkill("wayfinder", "/project/.agents/skills/wayfinder/SKILL.md"),
+      ]);
+
+      yield* startCodexTurn({
+        client: makeClient(requests, Effect.succeed(catalog)),
+        cwd: "/project",
+        turn: {
+          threadId: "provider-thread-1",
+          runtimeMode: "full-access",
+          prompt: "$wayfinder 687",
+        },
+      });
+
+      NodeAssert.deepStrictEqual(requests[0], {
+        method: "skills/list",
+        payload: { cwds: ["/project"] },
+      });
+      const turnStart = requests[1]?.payload as
+        | { readonly input: ReadonlyArray<unknown> }
+        | undefined;
+      NodeAssert.ok(turnStart);
+      NodeAssert.deepStrictEqual(turnStart.input, [
+        { type: "text", text: "$wayfinder 687" },
+        {
+          type: "skill",
+          name: "wayfinder",
+          path: "/project/.agents/skills/wayfinder/SKILL.md",
+        },
+      ]);
+    }),
+  );
+
+  it.effect("sends structured skills between the original text and image inputs", () =>
+    Effect.gen(function* () {
+      const requests: Array<{ readonly method: string; readonly payload: unknown }> = [];
+      const catalog = skillCatalog([
+        codexSkill("wayfinder", "/project/.agents/skills/wayfinder/SKILL.md"),
+      ]);
+
+      yield* startCodexTurn({
+        client: makeClient(requests, Effect.succeed(catalog)),
+        cwd: "/project",
+        turn: {
+          threadId: "provider-thread-1",
+          runtimeMode: "full-access",
+          prompt: "$wayfinder 687",
+          attachments: [{ type: "image", url: "data:image/png;base64,abc" }],
+        },
+      });
+
+      NodeAssert.deepStrictEqual(requests[0], {
+        method: "skills/list",
+        payload: { cwds: ["/project"] },
+      });
+      const turnStartRequest = requests[1];
+      NodeAssert.ok(turnStartRequest);
+      NodeAssert.deepStrictEqual(
+        (turnStartRequest.payload as { input: ReadonlyArray<unknown> }).input,
+        [
+          { type: "text", text: "$wayfinder 687" },
+          {
+            type: "skill",
+            name: "wayfinder",
+            path: "/project/.agents/skills/wayfinder/SKILL.md",
+          },
+          { type: "image", url: "data:image/png;base64,abc" },
+        ],
+      );
+    }),
+  );
+
+  it.effect("does not list skills for an ordinary prompt", () =>
+    Effect.gen(function* () {
+      const requests: Array<{ readonly method: string; readonly payload: unknown }> = [];
+
+      yield* startCodexTurn({
+        client: makeClient(requests, Effect.die("skills/list should not be called")),
+        cwd: "/project",
+        turn: {
+          threadId: "provider-thread-1",
+          runtimeMode: "full-access",
+          prompt: "ordinary prompt",
+        },
+      });
+
+      NodeAssert.deepStrictEqual(requests, [
+        {
+          method: "turn/start",
+          payload: {
+            threadId: "provider-thread-1",
+            approvalPolicy: "never",
+            approvalsReviewer: "user",
+            sandboxPolicy: { type: "dangerFullAccess" },
+            input: [{ type: "text", text: "ordinary prompt" }],
+          },
+        },
+      ]);
+    }),
+  );
+
+  it.effect("falls back to the original turn when skill discovery fails", () => {
+    const messages: string[] = [];
+    const logger = Logger.make(({ message }) => messages.push(String(message)));
+    const requests: Array<{ readonly method: string; readonly payload: unknown }> = [];
+    const catalogFailure = Effect.fail(
+      new CodexErrors.CodexAppServerRequestError({
+        code: -32603,
+        errorMessage: "catalog unavailable",
+      }),
+    );
+
+    return Effect.gen(function* () {
+      yield* startCodexTurn({
+        client: makeClient(requests, catalogFailure),
+        cwd: "/project",
+        turn: {
+          threadId: "provider-thread-1",
+          runtimeMode: "full-access",
+          prompt: "$wayfinder 687",
+          attachments: [{ type: "image", url: "data:image/png;base64,abc" }],
+        },
+      });
+
+      NodeAssert.deepStrictEqual(requests[0], {
+        method: "skills/list",
+        payload: { cwds: ["/project"] },
+      });
+      const turnStartRequest = requests[1];
+      NodeAssert.ok(turnStartRequest);
+      NodeAssert.deepStrictEqual(
+        (turnStartRequest.payload as { input: ReadonlyArray<unknown> }).input,
+        [
+          { type: "text", text: "$wayfinder 687" },
+          { type: "image", url: "data:image/png;base64,abc" },
+        ],
+      );
+      NodeAssert.ok(
+        messages.some((message) =>
+          message.includes("Unable to resolve explicit Codex skills before turn."),
+        ),
+      );
+    }).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
   });
 });
 
