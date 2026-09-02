@@ -1161,7 +1161,7 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
       preload="visible"
       className="block aspect-[4/3] w-full"
       videoClassName="border-border/80 aspect-auto size-full rounded-lg border"
-      stateClassName="border-border/80 aspect-auto h-full min-h-[72px] rounded-lg border bg-black text-white"
+      stateClassName="border-border/80 aspect-auto min-h-full rounded-lg border bg-black text-white"
       onRetry={asset ? refreshAssetUrl : undefined}
       onExpand={asset ? () => ctx.onFileOpen(file) : undefined}
       actionsSource={
