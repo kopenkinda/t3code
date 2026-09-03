@@ -154,7 +154,7 @@ type CodexThreadItem =
   | EffectCodexSchema.V2ThreadReadResponse["thread"]["turns"][number]["items"][number]
   | EffectCodexSchema.V2ThreadRollbackResponse["thread"]["turns"][number]["items"][number];
 
-export interface ResolvedCodexSkill {
+interface ResolvedCodexSkill {
   readonly name: string;
   readonly path: string;
 }
@@ -608,7 +608,7 @@ function buildCodexCollaborationMode(input: {
   };
 }
 
-export interface BuildTurnStartParamsInput {
+interface BuildTurnStartParamsInput {
   readonly threadId: string;
   readonly runtimeMode: RuntimeMode;
   readonly prompt?: string;
@@ -717,7 +717,7 @@ export function resolveCodexSkillInputs(
 export const startCodexTurn = Effect.fn("CodexSessionRuntime.startCodexTurn")(function* (input: {
   readonly client: CodexTurnStartClient;
   readonly cwd: string;
-  readonly turn: BuildTurnStartParamsInput;
+  readonly turn: Omit<BuildTurnStartParamsInput, "skills">;
 }) {
   let skills: ReadonlyArray<ResolvedCodexSkill> = [];
   const prompt = input.turn.prompt;
@@ -730,7 +730,10 @@ export const startCodexTurn = Effect.fn("CodexSessionRuntime.startCodexTurn")(fu
         }).pipe(Effect.as(undefined)),
       ),
     );
-    const cwdSkills = catalog?.data.find((entry) => entry.cwd === input.cwd)?.skills ?? [];
+    const matchingEntry = catalog?.data.find((entry) => entry.cwd === input.cwd);
+    const cwdSkills = matchingEntry
+      ? matchingEntry.skills
+      : (catalog?.data.flatMap((entry) => entry.skills) ?? []);
     skills = resolveCodexSkillInputs(prompt, cwdSkills);
   }
 
@@ -2408,12 +2411,11 @@ export const makeCodexSessionRuntime = (
               ),
             );
           }
-          const normalizedModel = normalizeCodexModelSlug(
-            input.model ?? (yield* Ref.get(sessionRef)).model,
-          );
+          const currentSession = yield* Ref.get(sessionRef);
+          const normalizedModel = normalizeCodexModelSlug(input.model ?? currentSession.model);
           const response = yield* startCodexTurn({
             client,
-            cwd: options.cwd,
+            cwd: currentSession.cwd ?? options.cwd,
             turn: {
               threadId: providerThreadId,
               runtimeMode: options.runtimeMode,

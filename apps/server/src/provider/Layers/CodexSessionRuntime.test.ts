@@ -373,6 +373,41 @@ describe("startCodexTurn", () => {
     }),
   );
 
+  it.effect("uses the returned catalog when App Server normalizes the cwd", () =>
+    Effect.gen(function* () {
+      const requests: Array<{ readonly method: string; readonly payload: unknown }> = [];
+      const catalog = {
+        data: [
+          {
+            cwd: "/private/project",
+            errors: [],
+            skills: [codexSkill("wayfinder", "/project/.agents/skills/wayfinder/SKILL.md")],
+          },
+        ],
+      } satisfies EffectCodexSchema.V2SkillsListResponse;
+
+      yield* startCodexTurn({
+        client: makeClient(requests, Effect.succeed(catalog)),
+        cwd: "/project",
+        turn: {
+          threadId: "provider-thread-1",
+          runtimeMode: "full-access",
+          prompt: "$wayfinder 687",
+        },
+      });
+
+      const turnStart = requests[1]?.payload as
+        | { readonly input: ReadonlyArray<unknown> }
+        | undefined;
+      NodeAssert.ok(turnStart);
+      NodeAssert.deepStrictEqual(turnStart.input[1], {
+        type: "skill",
+        name: "wayfinder",
+        path: "/project/.agents/skills/wayfinder/SKILL.md",
+      });
+    }),
+  );
+
   it.effect("sends structured skills between the original text and image inputs", () =>
     Effect.gen(function* () {
       const requests: Array<{ readonly method: string; readonly payload: unknown }> = [];
