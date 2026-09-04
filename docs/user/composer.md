@@ -222,6 +222,10 @@ the form that provider runs, so the text before and after the token is kept. Ski
 start, and never the agent on its own, work the same way. A skill you switched off in the provider's
 settings does not appear in either menu.
 
+Codex loads a skill only when it starts a fresh turn. If you send a skill while Codex is still
+working on the previous message, Codex handles it as ordinary text. Wait for the current turn to
+finish before sending the skill.
+
 Provider commands such as `/compact` only run when they open the message, so the `/` menu offers
 them only there. T3 Code's own commands, such as `/model` and `/plan`, and skills stay available on
 any line.

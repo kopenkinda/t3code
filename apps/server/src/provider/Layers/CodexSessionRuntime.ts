@@ -690,11 +690,10 @@ export function resolveCodexSkillInputs(
 ): ReadonlyArray<ResolvedCodexSkill> {
   const enabledSkillsByName = new Map<string, ResolvedCodexSkill>();
   for (const skill of skills) {
-    const normalizedName = skill.name.trim().toLowerCase();
-    if (!skill.enabled || enabledSkillsByName.has(normalizedName)) {
+    if (!skill.enabled || enabledSkillsByName.has(skill.name)) {
       continue;
     }
-    enabledSkillsByName.set(normalizedName, {
+    enabledSkillsByName.set(skill.name, {
       name: skill.name,
       path: skill.path,
     });
@@ -703,12 +702,11 @@ export function resolveCodexSkillInputs(
   const resolved: ResolvedCodexSkill[] = [];
   const seenNames = new Set<string>();
   for (const name of collectExplicitCodexSkillNames(prompt)) {
-    const normalizedName = name.toLowerCase();
-    const skill = enabledSkillsByName.get(normalizedName);
-    if (!skill || seenNames.has(normalizedName)) {
+    const skill = enabledSkillsByName.get(name);
+    if (!skill || seenNames.has(name)) {
       continue;
     }
-    seenNames.add(normalizedName);
+    seenNames.add(name);
     resolved.push(skill);
   }
   return resolved;
@@ -723,6 +721,7 @@ export const startCodexTurn = Effect.fn("CodexSessionRuntime.startCodexTurn")(fu
   const prompt = input.turn.prompt;
   if (prompt && collectExplicitCodexSkillNames(prompt).length > 0) {
     const catalog = yield* input.client.request("skills/list", { cwds: [input.cwd] }).pipe(
+      Effect.timeout("5 seconds"),
       Effect.catch((cause) =>
         Effect.logWarning("Unable to resolve explicit Codex skills before turn.", {
           cause,

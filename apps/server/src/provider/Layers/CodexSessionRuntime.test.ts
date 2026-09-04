@@ -2,8 +2,10 @@ import * as NodeAssert from "node:assert/strict";
 
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Logger from "effect/Logger";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import { describe } from "vite-plus/test";
 import { DEFAULT_MODEL, ThreadId } from "@t3tools/contracts";
 import * as CodexErrors from "effect-codex-app-server/errors";
@@ -270,7 +272,7 @@ describe("resolveCodexSkillInputs", () => {
 
   it("resolves multiple skills in textual order and deduplicates repeated tokens", () => {
     NodeAssert.deepStrictEqual(
-      resolveCodexSkillInputs("Use $TWO then $one and $two again", [
+      resolveCodexSkillInputs("Use $two then $one and $two again", [
         codexSkill("one", "/project/.agents/skills/one/SKILL.md"),
         codexSkill("two", "/project/.agents/skills/two/SKILL.md"),
       ]),
@@ -303,6 +305,15 @@ describe("resolveCodexSkillInputs", () => {
   it("recognizes a skill token at the end of the prompt", () => {
     NodeAssert.deepStrictEqual(
       resolveCodexSkillInputs("Please use $wayfinder", [wayfinderProject]),
+      [{ name: "wayfinder", path: "/project/.agents/skills/wayfinder/SKILL.md" }],
+    );
+  });
+
+  it("matches skill names exactly and ignores punctuation-adjacent text", () => {
+    NodeAssert.deepStrictEqual(
+      resolveCodexSkillInputs("Skip $Wayfinder and $wayfinder, then use $wayfinder", [
+        wayfinderProject,
+      ]),
       [{ name: "wayfinder", path: "/project/.agents/skills/wayfinder/SKILL.md" }],
     );
   });
@@ -519,6 +530,37 @@ describe("startCodexTurn", () => {
       );
     }).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
   });
+
+  it.effect("falls back after five seconds when skill discovery stalls", () =>
+    Effect.gen(function* () {
+      const requests: Array<{ readonly method: string; readonly payload: unknown }> = [];
+      const turn = yield* startCodexTurn({
+        client: makeClient(requests, Effect.never),
+        cwd: "/project",
+        turn: {
+          threadId: "provider-thread-1",
+          runtimeMode: "full-access",
+          prompt: "$wayfinder 687",
+        },
+      }).pipe(Effect.forkChild);
+
+      yield* Effect.yieldNow;
+      NodeAssert.deepStrictEqual(
+        [...requests],
+        [{ method: "skills/list", payload: { cwds: ["/project"] } }],
+      );
+
+      yield* TestClock.adjust("5 seconds");
+      yield* Fiber.join(turn);
+
+      const turnStartRequest = requests[1];
+      NodeAssert.ok(turnStartRequest);
+      NodeAssert.deepStrictEqual(
+        (turnStartRequest.payload as { input: ReadonlyArray<unknown> }).input,
+        [{ type: "text", text: "$wayfinder 687" }],
+      );
+    }),
+  );
 });
 
 describe("Codex MCP elicitation approvals", () => {
