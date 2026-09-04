@@ -30,6 +30,7 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import * as CodexClient from "effect-codex-app-server/client";
@@ -713,45 +714,48 @@ export function resolveCodexSkillInputs(
   return resolved;
 }
 
-export const startCodexTurn = Effect.fn("CodexSessionRuntime.startCodexTurn")(function* (input: {
-  readonly client: CodexTurnStartClient;
-  readonly cwd: string;
-  readonly turn: Omit<BuildTurnStartParamsInput, "skills">;
-}) {
-  let skills: ReadonlyArray<ResolvedCodexSkill> = [];
-  const prompt = input.turn.prompt;
-  if (prompt && collectExplicitCodexSkillNames(prompt).length > 0) {
-    const catalog = yield* input.client.request("skills/list", { cwds: [input.cwd] }).pipe(
-      Effect.timeout("5 seconds"),
-      Effect.catch((cause) =>
-        Effect.logWarning("Unable to resolve explicit Codex skills before turn.", {
-          cause,
-          cwd: input.cwd,
-        }).pipe(Effect.as(undefined)),
+export const makeCodexTurnStarter = (client: CodexTurnStartClient) => {
+  // Keep follow-ups behind skill discovery for the preceding message.
+  const gate = Semaphore.makeUnsafe(1);
+  return Effect.fn("CodexSessionRuntime.startCodexTurn")(function* (input: {
+    readonly cwd: string;
+    readonly turn: Omit<BuildTurnStartParamsInput, "skills">;
+  }) {
+    let skills: ReadonlyArray<ResolvedCodexSkill> = [];
+    const prompt = input.turn.prompt;
+    if (prompt && collectExplicitCodexSkillNames(prompt).length > 0) {
+      const catalog = yield* client.request("skills/list", { cwds: [input.cwd] }).pipe(
+        Effect.timeout("5 seconds"),
+        Effect.catch((cause) =>
+          Effect.logWarning("Unable to resolve explicit Codex skills before turn.", {
+            cause,
+            cwd: input.cwd,
+          }).pipe(Effect.as(undefined)),
+        ),
+      );
+      const matchingEntry = catalog?.data.find((entry) => entry.cwd === input.cwd);
+      const cwdSkills = matchingEntry
+        ? matchingEntry.skills
+        : (catalog?.data.flatMap((entry) => entry.skills) ?? []);
+      skills = resolveCodexSkillInputs(prompt, cwdSkills);
+    }
+
+    const params = yield* buildTurnStartParams({
+      ...input.turn,
+      ...(skills.length > 0 ? { skills } : {}),
+    });
+    const rawResponse = yield* client.raw.request("turn/start", params);
+    return yield* decodeV2TurnStartResponse(rawResponse).pipe(
+      Effect.mapError((error) =>
+        CodexErrors.CodexAppServerProtocolParseError.fromSchemaError(
+          "decode-response-payload",
+          error,
+          { method: "turn/start" },
+        ),
       ),
     );
-    const matchingEntry = catalog?.data.find((entry) => entry.cwd === input.cwd);
-    const cwdSkills = matchingEntry
-      ? matchingEntry.skills
-      : (catalog?.data.flatMap((entry) => entry.skills) ?? []);
-    skills = resolveCodexSkillInputs(prompt, cwdSkills);
-  }
-
-  const params = yield* buildTurnStartParams({
-    ...input.turn,
-    ...(skills.length > 0 ? { skills } : {}),
-  });
-  const rawResponse = yield* input.client.raw.request("turn/start", params);
-  return yield* decodeV2TurnStartResponse(rawResponse).pipe(
-    Effect.mapError((error) =>
-      CodexErrors.CodexAppServerProtocolParseError.fromSchemaError(
-        "decode-response-payload",
-        error,
-        { method: "turn/start" },
-      ),
-    ),
-  );
-});
+  }, gate.withPermit);
+};
 
 function classifyCodexStderrLine(rawLine: string): { readonly message: string } | null {
   const line = rawLine.replaceAll(ANSI_ESCAPE_REGEX, "").trim();
@@ -2396,6 +2400,8 @@ export const makeCodexSessionRuntime = (
       yield* Queue.shutdown(events);
     });
 
+    const startCodexTurn = makeCodexTurnStarter(client);
+
     return {
       start,
       getSession: Ref.get(sessionRef),
@@ -2418,7 +2424,6 @@ export const makeCodexSessionRuntime = (
           const currentSession = yield* Ref.get(sessionRef);
           const normalizedModel = normalizeCodexModelSlug(input.model ?? currentSession.model);
           const response = yield* startCodexTurn({
-            client,
             cwd: currentSession.cwd ?? options.cwd,
             turn: {
               threadId: providerThreadId,

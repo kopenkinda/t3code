@@ -2,6 +2,7 @@ import * as NodeAssert from "node:assert/strict";
 
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Logger from "effect/Logger";
 import * as Schema from "effect/Schema";
@@ -26,7 +27,7 @@ import {
   makeMemoryConsolidationNotificationFilter,
   openCodexThread,
   resolveCodexSkillInputs,
-  startCodexTurn,
+  makeCodexTurnStarter,
   toMcpElicitationResponse,
 } from "./CodexSessionRuntime.ts";
 const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
@@ -320,6 +321,11 @@ describe("resolveCodexSkillInputs", () => {
 });
 
 describe("startCodexTurn", () => {
+  const startCodexTurn = (
+    input: Parameters<ReturnType<typeof makeCodexTurnStarter>>[0] & {
+      client: Parameters<typeof makeCodexTurnStarter>[0];
+    },
+  ) => makeCodexTurnStarter(input.client)(input);
   const turnResponse = {
     turn: {
       id: "turn-1",
@@ -347,6 +353,57 @@ describe("startCodexTurn", () => {
       },
     },
   });
+
+  it.effect("keeps follow-ups behind a pending skill lookup", () =>
+    Effect.gen(function* () {
+      const requests: Array<{ readonly method: string; readonly payload: unknown }> = [];
+      const lookupStarted = yield* Deferred.make<void>();
+      const catalog = yield* Deferred.make<EffectCodexSchema.V2SkillsListResponse>();
+      const startTurn = makeCodexTurnStarter(
+        makeClient(
+          requests,
+          Deferred.succeed(lookupStarted, undefined).pipe(Effect.andThen(Deferred.await(catalog))),
+        ),
+      );
+      const first = yield* startTurn({
+        cwd: "/project",
+        turn: {
+          threadId: "provider-thread-1",
+          runtimeMode: "full-access",
+          prompt: "$wayfinder first",
+        },
+      }).pipe(Effect.forkChild);
+      yield* Deferred.await(lookupStarted);
+      const second = yield* startTurn({
+        cwd: "/project",
+        turn: {
+          threadId: "provider-thread-1",
+          runtimeMode: "full-access",
+          prompt: "follow-up",
+        },
+      }).pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      NodeAssert.deepStrictEqual(
+        requests.map((request) => request.method),
+        ["skills/list"],
+      );
+      yield* Deferred.succeed(
+        catalog,
+        skillCatalog([codexSkill("wayfinder", "/project/.agents/skills/wayfinder/SKILL.md")]),
+      );
+      yield* Fiber.join(first);
+      yield* Fiber.join(second);
+      NodeAssert.deepStrictEqual(
+        requests
+          .filter((request) => request.method === "turn/start")
+          .map(
+            (request) =>
+              (request.payload as { input: ReadonlyArray<{ text?: string }> }).input[0]?.text,
+          ),
+        ["$wayfinder first", "follow-up"],
+      );
+    }),
+  );
 
   it.effect("sends an explicit skill as structured turn input", () =>
     Effect.gen(function* () {
