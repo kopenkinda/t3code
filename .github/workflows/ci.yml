@@ -45,11 +45,17 @@ jobs:
       - name: Ensure Electron runtime is installed
         run: vp run --filter @t3tools/desktop ensure:electron
 
+      # Files/dependencies are repo-wide; export checks cover clean workspaces only.
+      - name: Check unused code
+        run: vp run knip:check
+
       - name: Check
         run: vp check
 
       - name: Typecheck
         run: vpr typecheck
+
+      - uses: ./.github/actions/setup-apt-mirrors
 
       - name: Install browser secret helper build libraries
         run: |
@@ -89,6 +95,8 @@ jobs:
 
       - name: Ensure Electron runtime is installed
         run: vp run --filter @t3tools/desktop ensure:electron
+
+      - uses: ./.github/actions/setup-apt-mirrors
 
       - name: Install browser secret helper build libraries
         run: |
